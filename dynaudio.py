@@ -76,7 +76,10 @@ class DynaudioDevice(MediaPlayerDevice):
 
   def construct_command(self, payload):
     """Construct full command"""
-    return 'FF 55 05' + payload + ' ' + self.calculate_checksum(payload)
+    prefix = "FF 55"
+    payload_size = len(payload.split(" ")).zfill(2)
+    checksum = self.calculate_checksum(payload)
+    return prefix + " " + payload_size + " " + payload + " " + checksum
 
   def socket_command(self, payload):
     """Establish a socket connection and sends command."""
