@@ -22,7 +22,7 @@ import homeassistant.helpers.config_validation as cv
 
 _LOGGER = logging.getLogger(__name__)
 
-DEFAULT_NAME = 'Dynaudio'
+DEFAULT_NAME = "Dynaudio"
 DEFAULT_PORT = 1901
 
 SUPPORT_DYNAUDIO = SUPPORT_VOLUME_SET | SUPPORT_VOLUME_MUTE | \
@@ -52,11 +52,11 @@ class DynaudioDevice(MediaPlayerDevice):
     self._name = name
     self._host = host
     self._port = port
-    self._zone = '1'
+    self._zone = "1"
     self._pwstate = False
     self._volume = 0
     self._muted = False
-    self._selected_source = ''
+    self._selected_source = ""
     self._source_name_to_number = {"Bluetooth": "06", "Coax": "04", "Line": "02", "Minijack": "01", "Optical": "03", "Stream": "07", "USB": "05"}
     self._source_number_to_name = {"06": "Bluetooth", "04": "Coax", "02": "Line", "01": "Minijack", "03": "Optical", "07": "Stream", "05": "USB"}
 
