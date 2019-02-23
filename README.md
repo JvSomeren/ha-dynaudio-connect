@@ -15,7 +15,6 @@ media_player:
 ```
 
 ## TODO
-* Import constants for media_player instead of hardcoding
 * Expand update function to reflect device state
 
 ## Licence
