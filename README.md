@@ -16,6 +16,7 @@ media_player:
 
 ## TODO
 * Expand update function to reflect device state
+* Volume up/down
 
 ## Licence
 This project is licensed under [MIT license](http://opensource.org/licenses/MIT).
