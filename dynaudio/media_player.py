@@ -57,21 +57,17 @@ class DynaudioDevice(MediaPlayerDevice):
     self._volume = 0
     self._muted = False
     self._selected_source = ""
-    self._source_name_to_number = {"Bluetooth": "06", "Coax": "04", "Line": "02", "Minijack": "01", "Optical": "03", "Stream": "07", "USB": "05"}
-    self._source_number_to_name = {"06": "Bluetooth", "04": "Coax", "02": "Line", "01": "Minijack", "03": "Optical", "07": "Stream", "05": "USB"}
+    self._source_name_to_number = {"Minijack": 1, "Line": 2, "Optical": 3, "Coax": 4, "USB": 5, "Bluetooth": 6, "Stream": 7}
+    self._source_number_to_name = {1: "Minijack", 2: "Line", 3: "Optical", 4: "Coax", 5: "USB", 6: "Bluetooth", 7: "Stream"}
 
   def calculate_checksum(self, payload):
     """Calculate the checksum for the complete command"""
     hexarray = payload.split(" ")
-
     sum = 0
     for num in hexarray:
         sum += int(num, 16)
-
     x = math.ceil(sum / 255)
-        
     checksum = x * 255 - sum - (len(hexarray) - x)
-
     return hex(checksum & 255)[2:]
 
   def construct_command(self, payload):
@@ -82,7 +78,7 @@ class DynaudioDevice(MediaPlayerDevice):
     return prefix + " " + payload_size + " " + payload + " " + checksum
 
   def socket_command(self, payload):
-    """Establish a socket connection and sends command."""
+    """Establish a socket connection and sends command"""
     try:
       with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.connect((self._host, self._port))
@@ -94,7 +90,31 @@ class DynaudioDevice(MediaPlayerDevice):
 
   def update(self):
     """Update device status"""
-    # TODO
+    # TODO 1: refactor code to reuse functions
+    # TODO 2: find proper feedback command to avoid hacky code
+    """Hacky: send command to green zone, to receive feedback."""
+    """Assuming green zone is not in use"""
+    command = "FF 55 05 2F A0 12 00 72 A8"
+    received = ""
+    try:
+      with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(2)
+        s.connect((self._host, self._port))
+        hex_data = bytes.fromhex(command)
+        s.send(hex_data)
+        received = s.recv(1024)
+    except (ConnectionRefusedError, OSError):
+      _LOGGER.warning("Dynaudio %s refused connection", self._name)
+    _LOGGER.warning("Received "+repr(received))
+    if received == "":
+      """If we receive nothing, the Connect is turned off"""
+      self._pwstate=False
+    else:
+      self._pwstate=received[6] #hypothesis, cannot test at this moment
+      self._volume=received[7]
+      self._selected_source=self._source_number_to_name[received[8]]
+      self._zone=received[9] #hypothesis, cannot test at this moment
+      self._mute=received[10]
     return True
 
   @property
