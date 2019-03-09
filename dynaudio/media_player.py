@@ -103,18 +103,22 @@ class DynaudioDevice(MediaPlayerDevice):
         hex_data = bytes.fromhex(command)
         s.send(hex_data)
         received = s.recv(1024)
-    except (ConnectionRefusedError, OSError):
+    except (ConnectionRefusedError):
       _LOGGER.warning("Dynaudio %s refused connection", self._name)
-    _LOGGER.warning("Received "+repr(received))
-    if received == "":
-      """If we receive nothing, the Connect is turned off"""
+      return True
+    except (OSError):
       self._pwstate=False
-    else:
-      self._pwstate=received[6] # hypothesis, cannot test at this moment
-      self._volume=received[7]
-      self._selected_source=self._source_number_to_name[received[8]]
-      self._zone=received[9] # hypothesis, cannot test at this moment
-      self._muted=received[10]
+      return True
+    #_LOGGER.warning("Received "+repr(received))
+    #if received == "":
+      #"""If we receive nothing, the Connect is turned off"""
+      #self._pwstate=False
+    #else:
+    self._pwstate=received[6] # hypothesis, cannot test at this moment
+    self._volume=received[7]
+    self._selected_source=self._source_number_to_name[received[8]]
+    self._zone=received[9] # hypothesis, cannot test at this moment
+    self._muted=received[10]
     return True
 
   @property
@@ -174,10 +178,17 @@ class DynaudioDevice(MediaPlayerDevice):
   def mute_volume(self, mute):
     """Mute (true) or unmute (false) media player."""
     self.socket_command("2F A0 12 01 5" + str(self._zone))
+    """Update state greedily to avoid delay"""
+    if self._muted:
+      self._muted = False
+    else:
+      self._muted = True
 
   def select_source(self, source):
     """Select input source."""
     self.socket_command(
       "2F A0 15 0" +
       str(self._source_name_to_number.get(source)) +
-      " 5" + str(self._zone))   
+      " 5" + str(self._zone))
+    """Update state greedily to avoid delay"""      
+    self._selected_source=source
