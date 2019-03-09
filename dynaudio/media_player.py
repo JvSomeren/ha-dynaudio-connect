@@ -73,7 +73,7 @@ class DynaudioDevice(MediaPlayerDevice):
   def construct_command(self, payload):
     """Construct full command"""
     prefix = "FF 55"
-    payload_size = len(payload.split(" ")).zfill(2)
+    payload_size = str(len(payload.split(" "))).zfill(2)
     checksum = self.calculate_checksum(payload)
     return prefix + " " + payload_size + " " + payload + " " + checksum
 
@@ -157,23 +157,23 @@ class DynaudioDevice(MediaPlayerDevice):
 
   def turn_off(self):
     """Turn off media player."""
-    self.socket_command("2F A0 02 01 F" + self._zone)
+    self.socket_command("2F A0 02 01 F" + str(self._zone))
 
   def turn_on(self):
     """Turn the media player on."""
-    self.socket_command("2F A0 01 00 F" + self._zone)
+    self.socket_command("2F A0 01 00 F" + str(self._zone))
 
   def set_volume_level(self, volume):
     """Set volume level, range 0..1."""
     # 60dB max
     self.socket_command(
       "2F A0 13 " + 
-      hex(round(volume * MAX_VOLUME))[2:].zfill(2) + 
+      str(hex(round(volume * MAX_VOLUME))[2:]).zfill(2) + 
       " 5" + self._zone)
 
   def mute_volume(self, mute):
     """Mute (true) or unmute (false) media player."""
-    self.socket_command("2F A0 12 01 5" + self._zone)
+    self.socket_command("2F A0 12 01 5" + str(self._zone))
 
   def select_source(self, source):
     """Select input source."""
