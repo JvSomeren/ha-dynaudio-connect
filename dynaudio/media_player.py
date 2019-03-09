@@ -110,11 +110,11 @@ class DynaudioDevice(MediaPlayerDevice):
       """If we receive nothing, the Connect is turned off"""
       self._pwstate=False
     else:
-      self._pwstate=received[6] #hypothesis, cannot test at this moment
+      self._pwstate=received[6] # hypothesis, cannot test at this moment
       self._volume=received[7]
       self._selected_source=self._source_number_to_name[received[8]]
-      self._zone=received[9] #hypothesis, cannot test at this moment
-      self._mute=received[10]
+      self._zone=received[9] # hypothesis, cannot test at this moment
+      self._muted=received[10]
     return True
 
   @property
@@ -169,7 +169,7 @@ class DynaudioDevice(MediaPlayerDevice):
     self.socket_command(
       "2F A0 13 " + 
       str(hex(round(volume * MAX_VOLUME))[2:]).zfill(2) + 
-      " 5" + self._zone)
+      " 5" + str(self._zone))
 
   def mute_volume(self, mute):
     """Mute (true) or unmute (false) media player."""
@@ -178,6 +178,6 @@ class DynaudioDevice(MediaPlayerDevice):
   def select_source(self, source):
     """Select input source."""
     self.socket_command(
-      "2F A0 15 " +
-      self._source_name_to_number.get(source) +
-      " 5" + self._zone)
+      "2F A0 15 0" +
+      str(self._source_name_to_number.get(source)) +
+      " 5" + str(self._zone))   
