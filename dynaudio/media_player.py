@@ -45,7 +45,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
 })
 
 def setup_platform(hass, config, add_entities, discovery_info=None):
-  """Set up the Dynaudio platform."""
+  """Set up the Dynaudio platform"""
   dynaudio = DynaudioDevice(
     config.get(CONF_NAME), config.get(CONF_HOST), config.get(CONF_PORT), config.get(CONF_MAX_VOLUME), \
       config.get(CONF_GREEDY_STATE), config.get(CONF_DEFAULT_STANDARD_ZONE))
@@ -53,10 +53,10 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
     add_entities([dynaudio])
 
 class DynaudioDevice(MediaPlayerDevice):
-  """Representation of a Dynaudio device."""
+  """Representation of a Dynaudio device"""
 
   def __init__(self, name, host, port, max_volume, greedy_state, standard_zone):
-    """Initialize the Dynaudio device."""
+    """Initialize the Dynaudio device"""
     self._name = name
     self._host = host
     self._port = port
@@ -64,8 +64,8 @@ class DynaudioDevice(MediaPlayerDevice):
     self._greedy_state = greedy_state
     self._zone = min(standard_zone, 3)
     self._pwstate = False
-    self._volume = 0
-    self._muted = False
+    self._volume = float(0)
+    self._muted = 0
     self._selected_source = ""
     self._source_name_to_number = {"Minijack": 1, "Line": 2, "Optical": 3, "Coax": 4, "USB": 5, "Bluetooth": 6, "Stream": 7}
     self._source_number_to_name = {1: "Minijack", 2: "Line", 3: "Optical", 4: "Coax", 5: "USB", 6: "Bluetooth", 7: "Stream"}
@@ -101,11 +101,11 @@ class DynaudioDevice(MediaPlayerDevice):
       return True
     except (OSError):
       self._pwstate=False
-      return True
+      return False
     return received
     
   def update(self):
-    """Hacky: send mute command to unused zone in order to receive feedback."""
+    """Hacky: send mute command to unused zone in order to receive feedback"""
     """Assuming only one zone is in use"""
     """Could be fixed by finding proper feedback command"""    
     mute_green = "2F A0 12 00 72"
@@ -115,8 +115,10 @@ class DynaudioDevice(MediaPlayerDevice):
     else:
       payload = mute_red
     received = self.socket_command(payload)
-    """Update device status"""    
-    self._volume=received[7] / self._max_volume
+    if received == False:
+      return True
+    """Update device status"""
+    self._volume=float(int(received[7]) / self._max_volume)
     _LOGGER.warning("LEVEL "+str(self._volume))
     self._selected_source=self._source_number_to_name[received[8]]
     self._muted=received[10]
@@ -127,12 +129,12 @@ class DynaudioDevice(MediaPlayerDevice):
 
   @property
   def name(self):
-    """Return the name of the device."""
+    """Return the name of the device"""
     return self._name
 
   @property
   def state(self):
-    """Return the state of the device."""
+    """Return the state of the device"""
     if self._pwstate:
       return STATE_ON
     else:
@@ -140,57 +142,59 @@ class DynaudioDevice(MediaPlayerDevice):
 
   @property
   def volume_level(self):
-    """Volume level of the media player (0..1)."""
-    return self._volume
+    """Volume level of the media player (0..1)"""
+    _LOGGER.warning("LEVEL BEFORE PROP "+str(self._volume))
+    return float(self._volume)
 
   @property
   def is_volume_muted(self):
-    """Boolean if volume is currently muted."""
+    """Boolean if volume is currently muted"""
     return self._muted
 
   @property
   def supported_features(self):
-    """Flag media player features that are supported."""
+    """Flag media player features that are supported"""
     return SUPPORT_DYNAUDIO
 
   @property
   def source(self):
-    """Return the current input source."""
+    """Return the current input source"""
     return self._selected_source
 
   @property
   def source_list(self):
-    """List of available input sources."""
+    """List of available input sources"""
     return list(self._source_name_to_number.keys())
 
+  @property
+  def media_title(self):
+    """Title in Lovelace"""
+    if self._pwstate:
+      return self._selected_source
+    else:
+      return "Off"
+
   def turn_off(self):
-    """Turn off media player."""
+    """Turn off media player"""
     self.socket_command("2F A0 02 01 F" + str(self._zone))
 
   def turn_on(self):
-    """Turn the media player on."""
+    """Turn the media player on"""
     self.socket_command("2F A0 01 00 F" + str(self._zone))
 
   def set_volume_level(self, volume):
-    """Set volume level, range 0..1."""
+    """Set volume level, range 0..1"""
     self.socket_command(
       "2F A0 13 " + 
       str(hex(round(volume * self._max_volume))[2:]).zfill(2) + 
       " 5" + str(self._zone))
-    _LOGGER.warning("LEVEL "+str(self._volume))
 
   def mute_volume(self, mute):
-    """Mute (true) or unmute (false) media player."""
+    """Mute (true) or unmute (false) media player"""
     self.socket_command("2F A0 12 01 5" + str(self._zone))
-    """Update state greedily to avoid delay"""
-    if self._greedy_state:    
-      if self._muted:
-        self._muted = False
-      else:
-        self._muted = True
 
   def select_source(self, source):
-    """Select input source."""
+    """Select input source"""
     self.socket_command(
       "2F A0 15 " +
       str(self._source_name_to_number.get(source)).zfill(2) +
