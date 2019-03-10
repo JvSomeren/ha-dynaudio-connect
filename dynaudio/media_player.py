@@ -107,7 +107,7 @@ class DynaudioDevice(MediaPlayerDevice):
       if (self._consecutive_connect_fails >= self._fails_before_off):
         self._pwstate=False
       return False
-    self._consecutive_connect_fails = 0  
+    self._consecutive_connect_fails = 0
     return received
 
   def update(self):
@@ -179,7 +179,7 @@ class DynaudioDevice(MediaPlayerDevice):
       return "Off"
 
   def turn_off(self):
-    """Turn the media player on"""
+    """Turn the media player off"""
     self.socket_command("2F A0 02 01 F" + str(self._zone))
     if self._greedy_state:
       self._pwstate = False
