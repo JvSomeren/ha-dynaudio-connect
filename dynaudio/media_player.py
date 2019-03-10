@@ -64,7 +64,7 @@ class DynaudioDevice(MediaPlayerDevice):
     self._greedy_state = greedy_state
     self._zone = min(standard_zone, 3)
     self._pwstate = False
-    self._volume = float(0)
+    self._volume = 0
     self._muted = 0
     self._selected_source = ""
     self._source_name_to_number = {"Minijack": 1, "Line": 2, "Optical": 3, "Coax": 4, "USB": 5, "Bluetooth": 6, "Stream": 7}
@@ -98,7 +98,7 @@ class DynaudioDevice(MediaPlayerDevice):
         received = s.recv(1024)
     except (ConnectionRefusedError):
       _LOGGER.warning("%s refused connection", self._name)
-      return True
+      return False
     except (OSError):
       self._pwstate=False
       return False
@@ -107,7 +107,7 @@ class DynaudioDevice(MediaPlayerDevice):
   def update(self):
     """Hacky: send mute command to unused zone in order to receive feedback"""
     """Assuming only one zone is in use"""
-    """Could be fixed by finding proper feedback command"""    
+    """Could be fixed by finding proper feedback command"""
     mute_green = "2F A0 12 00 72"
     mute_red = "2F A0 12 00 71"
     if self._zone == 1:
@@ -118,7 +118,7 @@ class DynaudioDevice(MediaPlayerDevice):
     if received == False:
       return True
     """Update device status"""
-    self._volume=float(int(received[7]) / self._max_volume)
+    self._volume=float(min((int(received[7]) / self._max_volume),1))
     _LOGGER.warning("LEVEL "+str(self._volume))
     self._selected_source=self._source_number_to_name[received[8]]
     self._muted=received[10]
@@ -143,8 +143,7 @@ class DynaudioDevice(MediaPlayerDevice):
   @property
   def volume_level(self):
     """Volume level of the media player (0..1)"""
-    _LOGGER.warning("LEVEL BEFORE PROP "+str(self._volume))
-    return float(self._volume)
+    return self._volume
 
   @property
   def is_volume_muted(self):
@@ -184,10 +183,9 @@ class DynaudioDevice(MediaPlayerDevice):
 
   def set_volume_level(self, volume):
     """Set volume level, range 0..1"""
-    self.socket_command(
-      "2F A0 13 " + 
-      str(hex(round(volume * self._max_volume))[2:]).zfill(2) + 
-      " 5" + str(self._zone))
+    payload = "2F A0 13 " + hex(round(volume * self._max_volume))[2:].zfill(2) + " 3" + str(self._zone)
+    _LOGGER.warning("SETLEVEL "+ payload + " " + self.calculate_checksum(payload))
+    self.socket_command(payload)
 
   def mute_volume(self, mute):
     """Mute (true) or unmute (false) media player"""
