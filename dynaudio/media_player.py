@@ -24,35 +24,45 @@ _LOGGER = logging.getLogger(__name__)
 
 DEFAULT_NAME = "Dynaudio"
 DEFAULT_PORT = 1901
+DEFAULT_MAX_VOLUME = 31
+DEFAULT_GREEDY_STATE = True
+DEFAULT_STANDARD_ZONE = 1
 
 SUPPORT_DYNAUDIO = SUPPORT_VOLUME_SET | SUPPORT_VOLUME_MUTE | \
   SUPPORT_TURN_ON | SUPPORT_TURN_OFF | SUPPORT_SELECT_SOURCE
 
-MAX_VOLUME = 31
+CONF_MAX_VOLUME = "max_volume"
+CONF_GREEDY_STATE = "greedy_state"
+CONF_DEFAULT_STANDARD_ZONE = "default_zone"
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Required(CONF_HOST): cv.string,
     vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
     vol.Optional(CONF_PORT, default=DEFAULT_PORT): cv.port,
+    vol.Optional(CONF_MAX_VOLUME, default=DEFAULT_MAX_VOLUME): cv.positive_int,
+    vol.Optional(CONF_GREEDY_STATE, default=DEFAULT_GREEDY_STATE): cv.boolean,
+    vol.Optional(CONF_DEFAULT_STANDARD_ZONE, default=DEFAULT_STANDARD_ZONE): cv.positive_int
 })
 
 def setup_platform(hass, config, add_entities, discovery_info=None):
   """Set up the Dynaudio platform."""
   dynaudio = DynaudioDevice(
-    config.get(CONF_NAME), config.get(CONF_HOST), config.get(CONF_PORT))
-
+    config.get(CONF_NAME), config.get(CONF_HOST), config.get(CONF_PORT), config.get(CONF_MAX_VOLUME), \
+      config.get(CONF_GREEDY_STATE), config.get(CONF_DEFAULT_STANDARD_ZONE))
   if dynaudio.update():
     add_entities([dynaudio])
 
 class DynaudioDevice(MediaPlayerDevice):
   """Representation of a Dynaudio device."""
 
-  def __init__(self, name, host, port):
+  def __init__(self, name, host, port, max_volume, greedy_state, standard_zone):
     """Initialize the Dynaudio device."""
     self._name = name
     self._host = host
     self._port = port
-    self._zone = 1
+    self._max_volume = min(max_volume, 31)
+    self._greedy_state = greedy_state
+    self._zone = min(standard_zone, 3)
     self._pwstate = False
     self._volume = 0
     self._muted = False
@@ -87,7 +97,7 @@ class DynaudioDevice(MediaPlayerDevice):
         s.send(hex_data)
         received = s.recv(1024)
     except (ConnectionRefusedError):
-      _LOGGER.warning("Dynaudio %s refused connection", self._name)
+      _LOGGER.warning("%s refused connection", self._name)
       return True
     except (OSError):
       self._pwstate=False
@@ -106,7 +116,7 @@ class DynaudioDevice(MediaPlayerDevice):
       payload = mute_red
     received = self.socket_command(payload)
     """Update device status"""    
-    self._volume=received[7] / MAX_VOLUME
+    self._volume=received[7] / self._max_volume
     _LOGGER.warning("LEVEL "+str(self._volume))
     self._selected_source=self._source_number_to_name[received[8]]
     self._muted=received[10]
@@ -165,7 +175,7 @@ class DynaudioDevice(MediaPlayerDevice):
     """Set volume level, range 0..1."""
     self.socket_command(
       "2F A0 13 " + 
-      str(hex(round(volume * MAX_VOLUME))[2:]).zfill(2) + 
+      str(hex(round(volume * self._max_volume))[2:]).zfill(2) + 
       " 5" + str(self._zone))
     _LOGGER.warning("LEVEL "+str(self._volume))
 
@@ -173,10 +183,11 @@ class DynaudioDevice(MediaPlayerDevice):
     """Mute (true) or unmute (false) media player."""
     self.socket_command("2F A0 12 01 5" + str(self._zone))
     """Update state greedily to avoid delay"""
-    if self._muted:
-      self._muted = False
-    else:
-      self._muted = True
+    if self._greedy_state:    
+      if self._muted:
+        self._muted = False
+      else:
+        self._muted = True
 
   def select_source(self, source):
     """Select input source."""
@@ -185,4 +196,5 @@ class DynaudioDevice(MediaPlayerDevice):
       str(self._source_name_to_number.get(source)).zfill(2) +
       " 5" + str(self._zone))
     """Update state greedily to avoid delay"""
-    self._selected_source=source
+    if self._greedy_state:
+      self._selected_source=source
