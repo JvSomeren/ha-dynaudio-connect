@@ -67,6 +67,8 @@ class DynaudioDevice(MediaPlayerDevice):
     self._volume = 0
     self._muted = False
     self._selected_source = ""
+    self._consecutive_connect_fails = 0
+    self._fails_before_off = 3
     self._source_name_to_number = {"Minijack": 1, "Line": 2, "Optical": 3, "Coax": 4, "USB": 5, "Bluetooth": 6, "Stream": 7}
     self._source_number_to_name = {1: "Minijack", 2: "Line", 3: "Optical", 4: "Coax", 5: "USB", 6: "Bluetooth", 7: "Stream"}
 
@@ -101,8 +103,11 @@ class DynaudioDevice(MediaPlayerDevice):
       _LOGGER.warning("%s refused connection", self._name)
       return False
     except (OSError):
-      self._pwstate=False
+      self._consecutive_connect_fails += 1
+      if (self._consecutive_connect_fails >= self._fails_before_off):
+        self._pwstate=False
       return False
+    self._consecutive_connect_fails = 0  
     return received
 
   def update(self):
@@ -176,6 +181,8 @@ class DynaudioDevice(MediaPlayerDevice):
   def turn_off(self):
     """Turn the media player on"""
     self.socket_command("2F A0 02 01 F" + str(self._zone))
+    if self._greedy_state:
+      self._pwstate = False
 
   def turn_on(self):
     """Turn the media player on"""
