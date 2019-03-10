@@ -52,7 +52,7 @@ class DynaudioDevice(MediaPlayerDevice):
     self._name = name
     self._host = host
     self._port = port
-    self._zone = "1"
+    self._zone = 1
     self._pwstate = False
     self._volume = 0
     self._muted = False
@@ -81,26 +81,9 @@ class DynaudioDevice(MediaPlayerDevice):
     """Establish a socket connection and sends command"""
     try:
       with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.connect((self._host, self._port))
-        hex_data = bytes.fromhex(self.construct_command(payload))
-        s.send(hex_data)
-    except (ConnectionRefusedError, OSError):
-      _LOGGER.warning("Dynaudio %s refused connection", self._name)
-      return
-
-  def update(self):
-    """Update device status"""
-    # TODO 1: refactor code to reuse functions
-    # TODO 2: find proper feedback command to avoid hacky code
-    """Hacky: send command to green zone, to receive feedback."""
-    """Assuming green zone is not in use"""
-    command = "FF 55 05 2F A0 12 00 72 A8"
-    received = ""
-    try:
-      with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.settimeout(2)
         s.connect((self._host, self._port))
-        hex_data = bytes.fromhex(command)
+        hex_data = bytes.fromhex(self.construct_command(payload))
         s.send(hex_data)
         received = s.recv(1024)
     except (ConnectionRefusedError):
@@ -109,16 +92,27 @@ class DynaudioDevice(MediaPlayerDevice):
     except (OSError):
       self._pwstate=False
       return True
-    #_LOGGER.warning("Received "+repr(received))
-    #if received == "":
-      #"""If we receive nothing, the Connect is turned off"""
-      #self._pwstate=False
-    #else:
-    self._pwstate=received[6] # hypothesis, cannot test at this moment
-    self._volume=received[7]
+    return received
+    
+  def update(self):
+    """Hacky: send mute command to unused zone in order to receive feedback."""
+    """Assuming only one zone is in use"""
+    """Could be fixed by finding proper feedback command"""    
+    mute_green = "2F A0 12 00 72"
+    mute_red = "2F A0 12 00 71"
+    if self._zone == 1:
+      payload = mute_green
+    else:
+      payload = mute_red
+    received = self.socket_command(payload)
+    """Update device status"""    
+    self._volume=received[7] / MAX_VOLUME
+    _LOGGER.warning("LEVEL "+str(self._volume))
     self._selected_source=self._source_number_to_name[received[8]]
-    self._zone=received[9] # hypothesis, cannot test at this moment
     self._muted=received[10]
+    """Below updates are hypotheses, cannot test without proper feedback command"""
+    self._pwstate=received[6]
+    self._zone=received[9]
     return True
 
   @property
@@ -169,11 +163,11 @@ class DynaudioDevice(MediaPlayerDevice):
 
   def set_volume_level(self, volume):
     """Set volume level, range 0..1."""
-    # 60dB max
     self.socket_command(
       "2F A0 13 " + 
       str(hex(round(volume * MAX_VOLUME))[2:]).zfill(2) + 
       " 5" + str(self._zone))
+    _LOGGER.warning("LEVEL "+str(self._volume))
 
   def mute_volume(self, mute):
     """Mute (true) or unmute (false) media player."""
@@ -187,8 +181,8 @@ class DynaudioDevice(MediaPlayerDevice):
   def select_source(self, source):
     """Select input source."""
     self.socket_command(
-      "2F A0 15 0" +
-      str(self._source_name_to_number.get(source)) +
+      "2F A0 15 " +
+      str(self._source_name_to_number.get(source)).zfill(2) +
       " 5" + str(self._zone))
-    """Update state greedily to avoid delay"""      
+    """Update state greedily to avoid delay"""
     self._selected_source=source
