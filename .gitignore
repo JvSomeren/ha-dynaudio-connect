@@ -1,0 +1,6 @@
+
+*.xlsx
+
+\.idea/
+
+\.DS_Store
