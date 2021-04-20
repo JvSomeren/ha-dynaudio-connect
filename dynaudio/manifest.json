@@ -1,8 +1,9 @@
 {
-  "domain": "https://github.com/JvSomeren/ha-dynaudio-connect",
-  "name": "Dynaudio Connect",
-  "documentation": "https://github.com/JvSomeren/ha-dynaudio-connect",
-  "dependencies": [],
-  "codeowners": [],
-  "requirements": []
+    "domain": "dynaudio",
+    "name": "Dynaudio Connect",
+    "documentation": "https://github.com/JvSomeren/ha-dynaudio-connect",
+    "dependencies": [],
+    "requirements": [],
+    "version": "v1.0.0",
+    "codeowners": ["@JvSomeren"]
 }
