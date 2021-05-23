@@ -8,7 +8,7 @@ https://github.com/therealmuffin/Dynaudio-connect-api
 import logging
 import math
 import socket
-
+import threading
 import voluptuous as vol
 
 from homeassistant.components.media_player import (
@@ -25,14 +25,12 @@ _LOGGER = logging.getLogger(__name__)
 DEFAULT_NAME = "Dynaudio"
 DEFAULT_PORT = 1901
 DEFAULT_MAX_VOLUME = 31
-DEFAULT_GREEDY_STATE = True
 DEFAULT_STANDARD_ZONE = 1
 
 SUPPORT_DYNAUDIO = SUPPORT_VOLUME_SET | SUPPORT_VOLUME_MUTE | \
   SUPPORT_TURN_ON | SUPPORT_TURN_OFF | SUPPORT_SELECT_SOURCE
 
 CONF_MAX_VOLUME = "max_volume"
-CONF_GREEDY_STATE = "greedy_state"
 CONF_DEFAULT_STANDARD_ZONE = "default_zone"
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
@@ -40,7 +38,6 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
     vol.Optional(CONF_PORT, default=DEFAULT_PORT): cv.port,
     vol.Optional(CONF_MAX_VOLUME, default=DEFAULT_MAX_VOLUME): cv.positive_int,
-    vol.Optional(CONF_GREEDY_STATE, default=DEFAULT_GREEDY_STATE): cv.boolean,
     vol.Optional(CONF_DEFAULT_STANDARD_ZONE, default=DEFAULT_STANDARD_ZONE): cv.positive_int
 })
 
@@ -48,20 +45,19 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
   """Set up the Dynaudio platform"""
   dynaudio = DynaudioEntity(
     config.get(CONF_NAME), config.get(CONF_HOST), config.get(CONF_PORT), config.get(CONF_MAX_VOLUME), \
-      config.get(CONF_GREEDY_STATE), config.get(CONF_DEFAULT_STANDARD_ZONE))
+      config.get(CONF_DEFAULT_STANDARD_ZONE))
   if dynaudio.update():
     add_entities([dynaudio])
 
 class DynaudioEntity(MediaPlayerEntity):
   """Representation of a Dynaudio entity"""
 
-  def __init__(self, name, host, port, max_volume, greedy_state, standard_zone):
+  def __init__(self, name, host, port, max_volume, standard_zone):
     """Initialize the Dynaudio entity"""
     self._name = name
     self._host = host
     self._port = port
     self._max_volume = min(max_volume, 31)
-    self._greedy_state = greedy_state
     self._zone = min(standard_zone, 3)
     self._pwstate = False
     self._volume = 0
@@ -71,6 +67,7 @@ class DynaudioEntity(MediaPlayerEntity):
     self._fails_before_off = 3
     self._source_name_to_number = {"Minijack": 1, "Line": 2, "Optical": 3, "Coax": 4, "USB": 5, "Bluetooth": 6, "Stream": 7}
     self._source_number_to_name = {1: "Minijack", 2: "Line", 3: "Optical", 4: "Coax", 5: "USB", 6: "Bluetooth", 7: "Stream"}
+    self.lock = threading.Lock()
 
   def calculate_checksum(self, payload):
     """Calculate the checksum for the complete command"""
@@ -91,6 +88,7 @@ class DynaudioEntity(MediaPlayerEntity):
 
   def socket_command(self, payload):
     """Establish a socket connection and sends command"""
+    self.lock.acquire()
     try:
       with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.settimeout(2)
@@ -98,38 +96,38 @@ class DynaudioEntity(MediaPlayerEntity):
         hex_data = bytes.fromhex(self.construct_command(payload))
         s.send(hex_data)
         received = s.recv(1024)
+        if received != False:
+          """Update entity status"""
+          self._volume=float(min((int(received[7]) / self._max_volume),1))
+          self._selected_source=self._source_number_to_name[received[8]]
+          self._muted=bool(received[10])
+          self._pwstate=bool(received[6])
+        s.shutdown(socket.SHUT_RDWR)
         s.close()
     except (ConnectionRefusedError):
-      _LOGGER.warning("%s refused connection", self._name)
+      _LOGGER.info("%s refused connection", self._name)
       return False
     except (OSError):
       self._consecutive_connect_fails += 1
       if (self._consecutive_connect_fails >= self._fails_before_off):
         self._pwstate=False
       return False
+    finally:
+      self.lock.release()
     self._consecutive_connect_fails = 0
-    return received
 
   def update(self):
     """Hacky: send mute command to unused zone in order to receive feedback"""
     """Assuming only one zone is in use"""
-    """Could be fixed by finding proper feedback command"""
+    """Could be fixed by keeping socket open and implementing feedback command"""
     mute_green = "2F A0 12 00 72"
     mute_red = "2F A0 12 00 71"
     if self._zone == 1:
       payload = mute_green
     else:
       payload = mute_red
-    received = self.socket_command(payload)
-    if received == False:
-      return True
-    """Update entity status"""
-    self._volume=float(min((int(received[7]) / self._max_volume),1))
-    self._selected_source=self._source_number_to_name[received[8]]
-    self._muted=bool(received[10])
-    """Below updates are hypotheses, cannot test without proper feedback command"""
-    self._pwstate=bool(received[6])
-    self._zone=int(received[9])
+      _LOGGER.warning("This should not occur as long as zone is red!")
+    self.socket_command(payload)
     return True
 
   @property
@@ -181,8 +179,6 @@ class DynaudioEntity(MediaPlayerEntity):
   def turn_off(self):
     """Turn the media player off"""
     self.socket_command("2F A0 02 01 F" + str(self._zone))
-    if self._greedy_state:
-      self._pwstate = False
 
   def turn_on(self):
     """Turn the media player on"""
@@ -191,19 +187,13 @@ class DynaudioEntity(MediaPlayerEntity):
   def set_volume_level(self, volume):
     """Set volume level, range 0..1"""
     self.socket_command(
-      "2F A0 13 " + 
-      str(hex(round(volume * self._max_volume))[2:]).zfill(2) + 
+      "2F A0 13 " +
+      str(hex(round(volume * self._max_volume))[2:]).zfill(2) +
       " 5" + str(self._zone))
 
   def mute_volume(self, mute):
-    """Mute (true) or unmute (false) media player"""
+    """Toggles mute of media player (regardless of bool mute)"""
     self.socket_command("2F A0 12 01 3" + str(self._zone))
-    """Update state greedily to avoid UI delay"""
-    if self._greedy_state:    
-      if self._muted:
-        self._muted = False
-      else:
-        self._muted = True
 
   def select_source(self, source):
     """Select input source"""
@@ -211,6 +201,3 @@ class DynaudioEntity(MediaPlayerEntity):
       "2F A0 15 " +
       str(self._source_name_to_number.get(source)).zfill(2) +
       " 5" + str(self._zone))
-    """Update state greedily to avoid UI delay"""
-    if self._greedy_state:
-      self._selected_source=source
